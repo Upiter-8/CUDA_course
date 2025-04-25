@@ -92,6 +92,13 @@ __global__ void computeNewValues(const real_t* __restrict A, __restrict real_t* 
     }
 }
 
+void checkCudaError(cudaError_t err, const char* msg) {
+    if (err != cudaSuccess) {
+        fprintf(stderr, "CUDA Error: %s: %s\n", msg, cudaGetErrorString(err));
+        exit(EXIT_FAILURE);
+    }
+}
+
 int main(int argc, char** argv) {
     cudaDeviceProp prop;
     cudaGetDeviceProperties(&prop, 0);
@@ -110,14 +117,18 @@ int main(int argc, char** argv) {
     	L = (L / 32) * 32;
     	if (L < 32) L = 32; 
     }
-    else L = 900;    
+    else{
+	int ll;
+	sscanf(argv[1], "%d", &ll);
+	L = ll;
+    }
 
     real_t *d_A, *d_B, *d_eps;
     size_t matrix_size = L * L * L * sizeof(real_t);
     
-    cudaMalloc(&d_A, matrix_size);
-    cudaMalloc(&d_B, matrix_size);
-    cudaMalloc(&d_eps, sizeof(real_t));
+    checkCudaError(cudaMalloc(&d_A, matrix_size), "cudaMalloc d_A failed");
+    checkCudaError(cudaMalloc(&d_B, matrix_size), "cudaMalloc d_B failed");
+    checkCudaError(cudaMalloc(&d_eps, sizeof(real_t)), "cudaMalloc d_esp failed");
     
     real_t *h_A = (real_t*)malloc(matrix_size);
     real_t *h_B = (real_t*)malloc(matrix_size);
@@ -135,8 +146,8 @@ int main(int argc, char** argv) {
         }
     }
     
-    cudaMemcpy(d_A, h_A, matrix_size, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_B, h_B, matrix_size, cudaMemcpyHostToDevice);
+    checkCudaError(cudaMemcpy(d_A, h_A, matrix_size, cudaMemcpyHostToDevice), "Memcpy d_A failed");
+    checkCudaError(cudaMemcpy(d_B, h_B, matrix_size, cudaMemcpyHostToDevice), "Memcpy d_B failed");
     
     dim3 blockSize(SIZEX, SIZEY, SIZEZ);
     dim3 gridSize(
@@ -152,16 +163,18 @@ int main(int argc, char** argv) {
     
     for (int it = 1; it <= ITMAX; it++) {
         real_t h_eps = 0;
-        cudaMemcpy(d_eps, &h_eps, sizeof(real_t), cudaMemcpyHostToDevice);
+        checkCudaError(cudaMemcpy(d_eps, &h_eps, sizeof(real_t), cudaMemcpyHostToDevice), "Memcpy d_eps failed");
         
 	computeEpsAndCopy<<<gridSize, blockSize>>>(d_A, d_B, d_eps, L);
-        
+	checkCudaError(cudaGetLastError(), "computeEpsAndCopy failed");        
+
         computeNewValues<<<gridSize, blockSize>>>(d_A, d_B, L);
+	checkCudaError(cudaGetLastError(), "computeNewValues failed");        
         
-        cudaMemcpy(&h_eps, d_eps, sizeof(real_t), cudaMemcpyDeviceToHost);
+        checkCudaError(cudaMemcpy(&h_eps, d_eps, sizeof(real_t), cudaMemcpyDeviceToHost), "Memcpy h_eps failed");
         
         printf(" IT = %4i   EPS = %14.7E\n", it, h_eps);
-        //if (h_eps < MAXEPS) break;
+        if (h_eps < MAXEPS) break;
     }
     
     cudaEventRecord(stop);
