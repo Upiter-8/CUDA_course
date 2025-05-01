@@ -8,6 +8,20 @@
 #define ITMAX 20
 #define MAXEPS 0.5
 
+void printB(const char* filename, double* B, int size){
+    FILE* file = fopen(filename, "w");
+    if (file == NULL) {
+        printf("Could not open %s\n", filename);
+        return;
+    }
+
+    for (int i = 0; i < size; i++) {
+        fprintf(file, "%lf\n", B[i]);
+    }
+
+    fclose(file);
+}
+
 int main(int argc, char** argv) {
     int L = 900;
 
@@ -84,6 +98,10 @@ int main(int argc, char** argv) {
     printf(" Operation type  =     double\n");
     printf(" All threads     =       %12d\n", omp_get_max_threads());
     printf(" END OF Jacobi3D Benchmark\n");
+
+    if (argc == 3){
+        printB("cpu_output.txt", B, L*L*L);
+    }
 
     free(A);
     free(B);

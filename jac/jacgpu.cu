@@ -15,23 +15,23 @@ template<typename T>
 __device__ static T MyatomicMax(T* address, T val) {
     if (sizeof(T) == sizeof(float)) {
         int* address_as_int = (int*)address;
-        int old = *address_as_int, assumed;
+        int vl1 = *address_as_int, vl2;
         do {
-            assumed = old;
-            old = atomicCAS(address_as_int, assumed,
-                __float_as_int(fmaxf(val, __int_as_float(assumed))));
-        } while (assumed != old);
-        return __int_as_float(old);
+            vl2 = vl1;
+            vl1 = atomicCAS(address_as_int, vl2,
+                __float_as_int(fmaxf(val, __int_as_float(vl2))));
+        } while (vl2 != vl1);
+        return __int_as_float(vl1);
     } else if (sizeof(T) == sizeof(double)) {
         unsigned long long int* address_as_ull =
             (unsigned long long int*)address;
-        unsigned long long int old = *address_as_ull, assumed;
+        unsigned long long int vl1 = *address_as_ull, vl2;
         do {
-            assumed = old;
-            old = atomicCAS(address_as_ull, assumed,
-                __double_as_longlong(fmax(val, __longlong_as_double(assumed))));
-        } while (assumed != old);
-        return __longlong_as_double(old);
+            vl2 = vl1;
+            vl1 = atomicCAS(address_as_ull, vl2,
+                __double_as_longlong(fmax(val, __longlong_as_double(vl2))));
+        } while (vl2 != vl1);
+        return __longlong_as_double(vl1);
     }
     return 0;
 }
@@ -97,6 +97,20 @@ void checkCudaError(cudaError_t err, const char* msg) {
         fprintf(stderr, "CUDA Error: %s: %s\n", msg, cudaGetErrorString(err));
         exit(EXIT_FAILURE);
     }
+}
+
+void printB(const char* filename, real_t* B, int size){
+    FILE* file = fopen(filename, "w");
+    if (file == NULL) {
+        printf("Could not open %s\n", filename);
+        return;
+    }
+
+    for (int i = 0; i < size; i++) {
+        fprintf(file, "%lf\n", B[i]);
+    }
+
+    fclose(file);
 }
 
 int main(int argc, char** argv) {
@@ -191,7 +205,12 @@ int main(int argc, char** argv) {
     printf(" Total Global Memory: %zu MB\n", prop.totalGlobalMem / (1024 * 1024));
     printf(" GPU Memory used =     %.2f MB\n", (2.0 * L * L * L * sizeof(real_t)) / (1024.0 * 1024.0));
     printf(" END OF Jacobi3D Benchmark\n");
-    
+
+    if (argc == 3){
+    	checkCudaError(cudaMemcpy(h_B, d_B, matrix_size, cudaMemcpyDeviceToHost), "Memcpy h_B failed");
+	printB("gpu_output.txt", h_B, L*L*L);
+    }   
+ 
     cudaFree(d_A);
     cudaFree(d_B);
     cudaFree(d_eps);

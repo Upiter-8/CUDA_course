@@ -2,47 +2,43 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <stdbool.h>
 
 #define MAX_LINE 512
 
-double get_time(const char *filename) {
-    FILE *fp = fopen(filename, "r");
-    if (!fp) {
-        fprintf(stderr, "Could not open %s\n", filename);
-        exit(1);
+bool compare(const char* file1, const char* file2) {
+    FILE *f1 = fopen(file1, "r");
+    FILE *f2 = fopen(file2, "r");
+
+    if (f1 == NULL || f2 == NULL) {
+	fprintf(stderr, "Could not open\n");
+	if (f1) fclose(f1);
+        if (f2) fclose(f2);
+        return false;
     }
 
-    char line[MAX_LINE];
-    double time = -1.0;
+    double num1, num2;
+    bool compare = true;
 
-    while (fgets(line, MAX_LINE, fp)) {
-        if (strstr(line, "Time in seconds")) {
-            sscanf(line, " Time in seconds = %lf", &time);
+    while (1) {
+        int res1 = fscanf(f1, "%lf", &num1);
+        int res2 = fscanf(f2, "%lf", &num2);
+	
+	if (res1 == EOF && res2 == EOF) {
+            break;
+        }
+
+	if (res1 == EOF || res2 == EOF || num1 != num2) {
+            compare = false;
+            break;
         }
     }
 
-    fclose(fp);
-    return time;
-}
+    fclose(f1);
+    fclose(f2);
 
-double get_eps(const char *filename) {
-    FILE *fp = fopen(filename, "r");
-    if (!fp) {
-        fprintf(stderr, "Could not open %s\n", filename);
-        exit(1);
-    }
+    return compare;
 
-    char line[MAX_LINE];
-    double last_eps = -1.0;
-
-    while (fgets(line, MAX_LINE, fp)) {
-        if (strstr(line, "EPS")) {
-            sscanf(line, " IT = %*d   EPS = %lf", &last_eps);
-        }
-    }
-
-    fclose(fp);
-    return last_eps;
 }
 
 int main(int argc, char** argv) {
@@ -56,31 +52,22 @@ int main(int argc, char** argv) {
     char command1[256];
     char command2[256];
 
-    snprintf(command1, sizeof(command1), "./jaccpu %d > cpu_output.txt", L);
-    snprintf(command2, sizeof(command2), "./jacgpu %d > gpu_output.txt", L);
+    snprintf(command1, sizeof(command1), "./jaccpu %d compare", L);
+    snprintf(command2, sizeof(command2), "./jacgpu %d compare", L);
 
-    printf("Running CPU version...\n");
+    printf("\nRun CPU version\n");
     system(command1);
 
-    printf("Running GPU version...\n");
+    printf("\nRun GPU version\n");
     system(command2);
 
-    double time_cpu = get_time("cpu_output.txt");
-    double time_gpu = get_time("gpu_output.txt");
-    double eps_cpu = get_eps("cpu_output.txt");
-    double eps_gpu = get_eps("gpu_output.txt");
+    bool flag = compare("cpu_output.txt", "gpu_output.txt");
+    printf("--- Results compare ---\n");
 
-    printf("\nComparison results\n");
-    printf("CPU time: %.2f s\n", time_cpu);
-    printf("GPU time: %.2f s\n", time_gpu);
-    printf("Speedup (CPU/GPU): %.2fx\n", time_cpu / time_gpu);
-
-    if (fabs(eps_cpu - eps_gpu) < 1e-6) {
-        printf("Eps matched\n");
+    if (flag) {
+        printf("Matrix matched\n");
     } else {
-        printf("Eps differ\n");
-	printf("Eps CPU: %.8lf\n", eps_cpu);
-    	printf("Eps GPU: %.8lf\n", eps_gpu);
+        printf("Matrix differ\n");
     }
 
     return 0;
