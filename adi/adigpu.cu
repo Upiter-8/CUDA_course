@@ -6,8 +6,8 @@
 typedef double real_t;
 
 #define Max(a, b) ((a) > (b) ? (a) : (b))
-#define SIZEX 32
-#define SIZEY 32
+#define SIZEX 16
+#define SIZEY 16
 
 int nx, ny, nz;
 

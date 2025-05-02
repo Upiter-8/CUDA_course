@@ -5,9 +5,9 @@
 #define Max(a, b) ((a) > (b) ? (a) : (b))
 #define ITMAX 20
 #define MAXEPS 0.5f
-#define SIZEX 8
-#define SIZEY 8
-#define SIZEZ 8
+#define SIZEX 16
+#define SIZEY 4
+#define SIZEZ 4
 
 typedef double real_t;
 
@@ -41,26 +41,25 @@ __global__ void computeEpsAndCopy(real_t* __restrict A, const real_t* __restrict
 
     int tid = threadIdx.x + threadIdx.y * blockDim.x + threadIdx.z * blockDim.x * blockDim.y;
     
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    int j = blockIdx.y * blockDim.y + threadIdx.y;
-    int k = blockIdx.z * blockDim.z + threadIdx.z;
+    int i = blockIdx.x * blockDim.x + threadIdx.x + 1;
+    int j = blockIdx.y * blockDim.y + threadIdx.y + 1;
+    int k = blockIdx.z * blockDim.z + threadIdx.z + 1;
     
     __syncthreads();
-    
-    real_t my_max = 0.0;
 
-    if (i > 0 && i < L-1 && j > 0 && j < L-1 && k > 0 && k < L-1) {
+    real_t my_max = 0.0;    
+
+    if (i < L-1 && j < L-1 && k < L-1) {
 	int idx = (k * L + j) * L + i;
         real_t b_val = B[idx];
-	real_t tmp = fabs(b_val - A[idx]);
-        my_max = tmp;
+	my_max = fabs(b_val - A[idx]);
 	A[idx] = b_val;
     }
     
     shared_max[tid] = my_max;
     __syncthreads();
 
-    for (int i = 256; i > 0; i = i/2) {
+    for (int i = SIZEX*SIZEY*SIZEZ / 2; i > 0; i = i/2) {
         if (tid < i) {
 	    shared_max[tid] = fmax(shared_max[tid], shared_max[tid+i]);
         }
@@ -75,11 +74,11 @@ __global__ void computeEpsAndCopy(real_t* __restrict A, const real_t* __restrict
 }
 
 __global__ void computeNewValues(const real_t* __restrict A, __restrict real_t* B, int L) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    int j = blockIdx.y * blockDim.y + threadIdx.y;
-    int k = blockIdx.z * blockDim.z + threadIdx.z;
+    int i = blockIdx.x * blockDim.x + threadIdx.x + 1;
+    int j = blockIdx.y * blockDim.y + threadIdx.y + 1;
+    int k = blockIdx.z * blockDim.z + threadIdx.z + 1;
     
-    if (i > 0 && i < L-1 && j > 0 && j < L-1 && k > 0 && k < L-1) {
+    if (i < L-1 && j < L-1 && k < L-1) {
 	int idx = (k * L + j) * L + i;
         B[idx] = (
             A[idx+1] + 
