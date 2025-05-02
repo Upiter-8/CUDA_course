@@ -36,41 +36,47 @@ __device__ static T MyatomicMax(T* address, T val) {
     return 0;
 }
 
-__global__ void computeEpsAndCopy(real_t* __restrict A, const real_t* __restrict B, real_t* eps, int L) {
-    __shared__ real_t shared_max[SIZEX*SIZEY*SIZEZ];
+__global__ void computeEpsAndCopy(const real_t* __restrict A, const real_t* __restrict B, real_t* eps, int L) {
+    __shared__ real_t shared_max[SIZEX*SIZEY*SIZEZ / 32];
 
     int tid = threadIdx.x + threadIdx.y * blockDim.x + threadIdx.z * blockDim.x * blockDim.y;
     
     int i = blockIdx.x * blockDim.x + threadIdx.x + 1;
     int j = blockIdx.y * blockDim.y + threadIdx.y + 1;
     int k = blockIdx.z * blockDim.z + threadIdx.z + 1;
-    
+    int warp_id = tid / 32;
+    int lane_id = tid % 32;   
+ 
     __syncthreads();
 
     real_t my_max = 0.0;    
 
     if (i < L-1 && j < L-1 && k < L-1) {
 	int idx = (k * L + j) * L + i;
-        real_t b_val = B[idx];
-	my_max = fabs(b_val - A[idx]);
-	A[idx] = b_val;
+	my_max = fabs(B[idx] - A[idx]);
     }
-    
-    shared_max[tid] = my_max;
+
+    for (int offset = 16; offset > 0; offset >>= 1) {
+        real_t tmp = __shfl_down_sync(0xFFFFFFFF, my_max, offset);
+        my_max = fmax(my_max, tmp);
+    }
+
+    if (lane_id == 0) {
+        shared_max[warp_id] = my_max;
+    }
     __syncthreads();
 
-    for (int i = SIZEX*SIZEY*SIZEZ / 2; i > 0; i = i/2) {
-        if (tid < i) {
-	    shared_max[tid] = fmax(shared_max[tid], shared_max[tid+i]);
+    if (warp_id == 0) {
+        my_max = (lane_id < 8) ? shared_max[lane_id] : 0.0;
+        for (int offset = 4; offset > 0; offset >>= 1) {
+            real_t tmp = __shfl_down_sync(0xFFFFFFFF, my_max, offset);
+            my_max = fmax(my_max, tmp);
         }
-        __syncthreads();
+        if (lane_id == 0) {
+            MyatomicMax(eps, my_max);
+        }
     }
 
-    __syncthreads();
-    
-    if (tid == 0){
-	MyatomicMax(eps, shared_max[0]);
-    }
 }
 
 __global__ void computeNewValues(const real_t* __restrict A, __restrict real_t* B, int L) {
@@ -81,12 +87,12 @@ __global__ void computeNewValues(const real_t* __restrict A, __restrict real_t* 
     if (i < L-1 && j < L-1 && k < L-1) {
 	int idx = (k * L + j) * L + i;
         B[idx] = (
-            A[idx+1] + 
-            A[idx-1] + 
-            A[idx + L] + 
+            A[idx - L*L] +
             A[idx - L] + 
-            A[idx + L*L] + 
-            A[idx - L*L]
+            A[idx-1] + 
+            A[idx+1] + 
+            A[idx + L] + 
+            A[idx + L*L]
         ) / 6.0f;
     }
 }
@@ -178,10 +184,12 @@ int main(int argc, char** argv) {
         real_t h_eps = 0;
         checkCudaError(cudaMemcpy(d_eps, &h_eps, sizeof(real_t), cudaMemcpyHostToDevice), "Memcpy d_eps failed");
         
-	computeEpsAndCopy<<<gridSize, blockSize>>>(d_A, d_B, d_eps, L);
+	if (it % 2 == 1) computeEpsAndCopy<<<gridSize, blockSize>>>(d_A, d_B, d_eps, L);
+	else computeEpsAndCopy<<<gridSize, blockSize>>>(d_B, d_A, d_eps, L);
 	checkCudaError(cudaGetLastError(), "computeEpsAndCopy failed");        
 
-        computeNewValues<<<gridSize, blockSize>>>(d_A, d_B, L);
+        if (it % 2 == 1) computeNewValues<<<gridSize, blockSize>>>(d_B, d_A, L);
+	else computeNewValues<<<gridSize, blockSize>>>(d_A, d_B, L);
 	checkCudaError(cudaGetLastError(), "computeNewValues failed");        
         
         checkCudaError(cudaMemcpy(&h_eps, d_eps, sizeof(real_t), cudaMemcpyDeviceToHost), "Memcpy h_eps failed");

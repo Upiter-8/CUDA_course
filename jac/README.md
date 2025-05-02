@@ -46,7 +46,7 @@ make
  Jacobi3D Benchmark Completed.
  Size            =  900 x  900 x  900
  Iterations      =                 20
- Time in seconds =               1.63
+ Time in seconds =               1.13
  Operation type  =     double
  GPU Device: Tesla P100-SXM2-16GB
  Total Global Memory: 16280 MB
