@@ -36,7 +36,7 @@ make
  ADI Benchmark Completed.
  Size            =  900 x  900 x  900
  Iterations      =                 10
- Time in seconds =               4.73
+ Time in seconds =               3.59
  Operation type  =     double
  GPU Device: Tesla P100-SXM2-16GB
  Total Global Memory: 16280 MB
